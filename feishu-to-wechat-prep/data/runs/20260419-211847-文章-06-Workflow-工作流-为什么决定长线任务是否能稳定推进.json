@@ -1,0 +1,29 @@
+{
+  "run_id": "20260419-211847-文章-06-Workflow-工作流-为什么决定长线任务是否能稳定推进",
+  "timestamp": "2026-04-19T21:18:47.879995",
+  "source_mode": "local",
+  "source_ref": "C:\\Users\\10146\\fanto_article_06_workflow.md",
+  "output_markdown": "C:\\Users\\10146\\fanto_article_06_wechat.md",
+  "generated_images": [
+    "C:\\Users\\10146\\fanto_article_06_workflow_flow_1.png"
+  ],
+  "replaced_blocks": [
+    {
+      "type": "vertical_flow",
+      "original": "```text\n[开始] \n  ↓\n【节点 1：输入收集】用户提供主题或本地文件\n  ↓\n【节点 2：飞书内容抓取】如果有飞书链接，强制抓取最新线上版本\n  ↓\n【节点 3：核心结构转图】(调用 feishu-to-wechat-prep Skill) 识别流程图，转成图片\n  ↓\n【节点 4：发布前校验】(调用 wechat-draft-publisher) 检查图片、补充封面\n  ↓\n【节点 5：人工审核】发一条消息给用户：“准备好了，要发草稿箱吗？”\n  ↓ (如果同意)\n【节点 6：正式发布】推送给微信接口，返回 Media ID\n  ↓\n[结束]\n```",
+      "nodes": [
+        "[开始]",
+        "【节点 1：输入收集】用户提供主题或本地文件",
+        "【节点 2：飞书内容抓取】如果有飞书链接，强制抓取最新线上版本",
+        "【节点 3：核心结构转图】(调用 feishu-to-wechat-prep Skill) 识别流程图，转成图片",
+        "【节点 4：发布前校验】(调用 wechat-draft-publisher) 检查图片、补充封面",
+        "【节点 5：人工审核】发一条消息给用户：“准备好了，要发草稿箱吗？”",
+        "↓ (如果同意)",
+        "【节点 6：正式发布】推送给微信接口，返回 Media ID",
+        "[结束]"
+      ]
+    }
+  ],
+  "title": "文章 06｜Workflow（工作流）为什么决定长线任务是否能稳定推进？",
+  "cover": "./board2_render.png"
+}

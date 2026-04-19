@@ -1,0 +1,36 @@
+{
+  "run_id": "20260419-195301-Prompt-到底是什么-它为什么会影响-Agent-做事",
+  "timestamp": "2026-04-19T19:53:01.280549",
+  "source_mode": "local",
+  "source_ref": "C:\\Users\\10146\\fanto_article_03_prompt_bridge.md",
+  "output_markdown": "C:\\Users\\10146\\fanto_article_03_wechat_test.md",
+  "generated_images": [
+    "C:\\Users\\10146\\fanto_article_03_prompt_bridge_flow_1.png",
+    "C:\\Users\\10146\\fanto_article_03_prompt_bridge_flow_2.png"
+  ],
+  "replaced_blocks": [
+    {
+      "type": "vertical_flow",
+      "original": "```text\n你问一句\n  ↓\n它答一句\n  ↓\n这轮结束\n```",
+      "nodes": [
+        "你问一句",
+        "它答一句",
+        "这轮结束"
+      ]
+    },
+    {
+      "type": "vertical_flow",
+      "original": "```text\n你给一个目标\n  ↓\n它理解任务\n  ↓\n决定下一步\n  ↓\n需要的话去拿信息\n  ↓\n继续推进\n  ↓\n最后交付结果\n```",
+      "nodes": [
+        "你给一个目标",
+        "它理解任务",
+        "决定下一步",
+        "需要的话去拿信息",
+        "继续推进",
+        "最后交付结果"
+      ]
+    }
+  ],
+  "title": "Prompt 到底是什么？它为什么会影响 Agent 做事？",
+  "cover": "./board2_render.png"
+}

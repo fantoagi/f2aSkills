@@ -1,0 +1,18 @@
+{
+  "run_id": "20260419-195339-MCP-tools-为什么会让-Agent-不只是会说-而是真的能做",
+  "timestamp": "2026-04-19T19:53:39.348797",
+  "source_mode": "local",
+  "source_ref": "C:\\Users\\10146\\fanto_article_04_mcp_tools.md",
+  "output_markdown": "C:\\Users\\10146\\fanto_article_04_wechat_test.md",
+  "generated_images": [
+    "C:\\Users\\10146\\fanto_article_04_mcp_tools_relation.png"
+  ],
+  "replaced_blocks": [
+    {
+      "type": "relation",
+      "original": "所以可以把这一层理解成：\n\n- Prompt 决定怎么交代任务\n- tools 决定能不能接上真实世界\n"
+    }
+  ],
+  "title": "MCP / tools 为什么会让 Agent 不只是会说，而是真的能做？",
+  "cover": "./board2_render.png"
+}

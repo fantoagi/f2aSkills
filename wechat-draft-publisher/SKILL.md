@@ -113,14 +113,14 @@ If you are invoking the skill directly, specify the style combination in the cal
 Example intent:
 
 ```text
-用 wechat-draft-publisher 发布 /path/to/article.md，theme=orangeheart，highlight=solarized-dark
+用 wechat-draft-publisher 发布 /absolute/path/to/article.md，theme=orangeheart，highlight=solarized-dark
 ```
 
 Equivalent script-level commands:
 
 ```bash
-python scripts/render_preview.py --file /path/to/article.md --theme orangeheart --highlight solarized-dark
-python scripts/publish_article.py --file /path/to/article.md --theme orangeheart --highlight solarized-dark
+python <skill-root-absolute-path>/scripts/render_preview.py --file /absolute/path/to/article.md --theme orangeheart --highlight solarized-dark
+python <skill-root-absolute-path>/scripts/publish_article.py --file /absolute/path/to/article.md --theme orangeheart --highlight solarized-dark
 ```
 
 Known working values:
@@ -134,30 +134,43 @@ Precedence order:
 
 `style-set` is for persistent defaults. Call-time `theme` / `highlight` are for a single invocation and do not modify `data/settings.json`.
 
+## Standard Invocation Pattern for LLMs
+
+Because your current working directory may vary, **you MUST ALWAYS use absolute paths** for both the Python script and the target Markdown file.
+
+1. First, identify the absolute path to this skill's root directory (where this `SKILL.md` is located).
+2. Construct the bash command using that absolute path.
+3. Ensure the `--file` argument is also an absolute path.
+
+**Format:**
+```bash
+python <ABSOLUTE_SKILL_ROOT>/scripts/<script_name>.py --file <ABSOLUTE_ARTICLE_PATH>
+```
+
 ## Commands
 
 ### Check credential status
 
 ```bash
-python scripts/auth_manager.py status
+python <skill-root-absolute-path>/scripts/auth_manager.py status
 ```
 
 ### Validate article before publish
 
 ```bash
-python scripts/preflight_check.py --file /path/to/article.md
+python <skill-root-absolute-path>/scripts/preflight_check.py --file /absolute/path/to/article.md
 ```
 
 ### Render preview HTML only
 
 ```bash
-python scripts/render_preview.py --file /path/to/article.md
+python <skill-root-absolute-path>/scripts/render_preview.py --file /absolute/path/to/article.md
 ```
 
 ### Publish to WeChat draft box
 
 ```bash
-python scripts/publish_article.py --file /path/to/article.md
+python <skill-root-absolute-path>/scripts/publish_article.py --file /absolute/path/to/article.md
 ```
 
 Optional flags:

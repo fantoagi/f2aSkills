@@ -149,6 +149,28 @@ wiki token 不是实际 doc token。
 - 修复重复问题时，先辨认、后动作，不要先再插一份
 - “先插后删”只能在边界完全唯一且回退方案清楚时使用；默认不采用
 
+## 6.4 frontmatter 泄漏进正文
+
+### 症状
+- 飞书正文开头出现 `title: ...`、`cover: ...`、`tags: ...`、`date: ...`
+- 一篇文章标题已经正常存在，但正文前面又多出一串 YAML 风格元数据
+- `cover: ./board2_render.png` 之类本地资源路径被直接发到了线上正文
+
+### 原因
+- 发布时直接把本地 markdown 原文送进飞书，没有先剥离文件开头的 YAML frontmatter
+- 把 frontmatter 里的元数据误当成正文第一段
+- 清洗逻辑只做了标题抽取，没有验证 frontmatter 是否真的被完整去掉
+
+### 处理
+1. 读取本地 markdown 后，先检查文件开头是否存在成对 `---` 包裹的 frontmatter
+2. 若存在，整段剥离后再生成待发布正文
+3. 发布前再做一次首屏检查；若开头仍出现成组 `key: value` 元数据，立即停止，不要继续发
+4. 若文章标题已单独生成为 heading，不要再把 frontmatter 里的 `title` 文本重复拼回正文
+
+### 经验规则
+- YAML frontmatter 只属于本地内容管理，不属于飞书正文
+- `title:`、`cover:` 一旦在线上出现，优先怀疑导入前清洗缺失或失效
+
 ## 7. 出现 `[WARNING:BOARD_TOKEN_NOT_SUPPORTED]`
 
 ### 含义

@@ -16,7 +16,7 @@ DATA_DIR = SKILL_DIR / "data"
 RUNS_DIR = DATA_DIR / "runs"
 
 sys.path.insert(0, str(SCRIPT_DIR))
-from diagram_renderers import render_vertical_flow, render_three_stage_relation
+from diagram_renderers import render_vertical_flow, render_three_stage_relation, render_mermaid_diagram
 
 # regex to find code blocks
 CODE_BLOCK_RE = re.compile(r"```(text|mermaid)[\s\S]*?```")
@@ -87,9 +87,24 @@ def process_content(body: str, output_dir: Path, base_name: str, core_only: bool
     replaced_blocks = []
     generated_images = []
 
-    # 1. Replace multi-step flow blocks
+    # 1. Replace mermaid and multi-step flow blocks
     def flow_replacer(match: re.Match) -> str:
         block = match.group(0)
+
+        # Handle mermaid code blocks: render via Kroki API
+        if "```mermaid" in block:
+            lines = block.splitlines()
+            code_lines = [l for l in lines if not l.strip().startswith("```")]
+            code = "\n".join(code_lines).strip()
+            if code:
+                img_name = f"{base_name}_mermaid_{len(replaced_blocks)+1}.png"
+                img_path = output_dir / img_name
+                if render_mermaid_diagram(code, img_path):
+                    generated_images.append(str(img_path))
+                    replaced_blocks.append({"type": "mermaid", "original": block, "output": img_name})
+                    return f"![](./{img_name})"
+            return block
+
         # heuristic: if it looks like a simple vertical flow
         if "↓" in block and "```text" in block:
             nodes = extract_nodes_from_flow_block(block)

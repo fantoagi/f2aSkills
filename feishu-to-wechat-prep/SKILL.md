@@ -11,8 +11,8 @@ description: 把飞书正文或本地正文转化为“微信公众号可发布�
 
 - 提供“飞书文档/wiki链接”或“本地 markdown 文件”作为双向入口。
 - 如输入是飞书，通过底层 `lark-doc` 自动抓取当前线上正文（强制作为唯一事实源）。
-- 检测核心的“纵向多步流程”或“横向对比关系”等结构化表达（如代码块里的 `text` / `Mermaid` / 特殊文字列表）。
-- 调用 Python Pillow 将这些核心结构本地渲染为 PNG 图片资源。
+- 检测核心的”纵向多步流程”或”横向对比关系”等结构化表达（如代码块里的 `text` / `Mermaid` / 特殊文字列表）。
+- 调用 Python Pillow 将文本流程本地渲染为 PNG 图片资源；调用 **Kroki API**（远程）将 ````mermaid```` 代码块渲染为 SVG 图片资源。
 - 复用 `wechat-draft-publisher` 的检查要求，为新稿自动补齐 frontmatter (`title`, `cover`)。
 - 最终产出 `*_wechat.md` 文件以及对应的图片，供后续安全发布。
 
@@ -25,6 +25,19 @@ description: 把飞书正文或本地正文转化为“微信公众号可发布�
 ## 为什么不在 publish 环节做？
 
 `wechat-draft-publisher` 提供了一套稳定的本地 markdown 验证与发布 API 隔离（Draft-only guarantee）。如果在那个环节隐式做复杂的“抓取远端内容”、“排版变换”、“图片渲染”，不仅会破坏其独立验证职责，还会导致排障困难。把改造过程隔离到独立前置编排 skill 里，输出产物后再用基础 skill 校验，是最安全的。
+
+## 标准清洗规则（本地 Markdown -> 微信稿）
+
+当来源是本地 Markdown 时，默认先做一次轻量规范化，再决定是否转图：
+
+1. 识别并移除文件开头成对 `--- ... ---` 的 YAML frontmatter；
+2. 删除 `<whiteboard type="blank"></whiteboard>` 占位；
+3. 删除紧随其后的作者配图说明段，例如“这张图最好画成一个……”“图意：……”这类给编辑看的指令性 prose；
+4. 保留真正正文，不删除普通分隔线 `---`、正常段落和正文内合法小节；
+5. 按微信发布要求重建 frontmatter（至少 `title`，并补齐 `cover` 或合法封面来源）；
+6. 产出 `*_wechat.md` 后，首屏不得残留旧的 `title:` / `cover:` / `tags:` / `date:` 元数据键值；若残留，停止，不进入 publisher。
+
+这条清洗链路既适用于“飞书正文改微信稿”，也适用于“本地文章直接改微信稿”。如果用户这次不需要把结构内容转成图片，也应支持只做清洗和 frontmatter 重建，不强制转图。
 
 ## Workflow
 

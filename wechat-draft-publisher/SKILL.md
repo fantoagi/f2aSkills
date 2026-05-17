@@ -27,6 +27,18 @@ Publish a local Markdown article to **WeChat Official Account draft box only** w
 - Skill root: this skill directory
 - Runtime data: `./data`
 
+## Default preflight gate
+
+在真正 publish 之前，默认按这个顺序检查：
+
+1. **凭证完整性**：确认 `WECHAT_APP_ID` / `WECHAT_APP_SECRET` 来自 skill-local `.env`、显式参数或当前环境，至少有一条可用来源；
+2. **文章结构**：确认存在 `title`，以及 `cover` 或合法首图回退；
+3. **环境门槛**：确认当前出口 IP 已加入公众号后台白名单；
+4. **本地预览**：如用户只是想检查文章结构或样式，停在 `preflight` / `preview`，不要直接 publish；
+5. **成功回执**：publish 成功后，统一返回标题、`media_id`、本次使用的 `theme/highlight`、以及是否使用了封面回退。
+
+这里最容易被忽略的不是正文，而是环境。不要把 IP 白名单问题留到 publish 失败后才排障。
+
 ## First-time setup
 
 ### 1. Install wenyan CLI

@@ -1,7 +1,7 @@
 ---
 name: youtube-bilingual-transcript
 description: 抓取 YouTube / bilibili 等平台视频的官方字幕(含中文轨)并生成"中英对照逐字稿" markdown；平台无字幕轨(如小宇宙播客)则走百炼 DashScope 云端转写。当用户要"抓某视频的完整中英文字幕/逐字稿"、"要双语字幕"、"z字幕"、"bilibili字幕"、"小宇宙/播客转文字"、"把视频/音频变成文字稿"时触发。针对中国网络(直连被墙)、YouTube 中文翻译轨 429 限流、bilibili 视频页 412 反爬/需登录 cookie/无标点字幕、DashScope filetrans 按模型字段差异、以及"英文热词会切碎英文专名→只留中文热词"处理了专门解法；小宇宙无字幕轨走"页面元数据自举词表 + 说话人分离 + 章节分段"。
-version: 0.7.0
+version: 0.9.0
 ---
 
 # 跨平台双语逐字稿
@@ -167,7 +167,8 @@ cp OUTDIR/bilingual.md "/d/wiki/inbox/Transcript (中英对照) - 标题 - 公�
 | bilibili 单语无英文 | B站多为单中文 CC 轨 | 走 mono 单列；别期望必有中英对照 |
 | 百炼转写报 `InvalidParameter.MalformedURL` | 入参字段给错：Qwen3 要 `file_url` 单串，旧模型要 `file_urls` 数组 | 按模型用对应字段；结果 URL 同理 `output.result`(Qwen3) vs `output.results[]`(旧) |
 | 平台无字幕轨（小宇宙等播客） | 无公开字幕轨，本地 Whisper 不想要 | 拉公网音频 URL → `dashscope_asr_transcribe.py` 走百炼云端 |
-| 英文专名被切碎成 P/Pal/f | `qwen-audio-3.0` 的 `--vocabulary` 里塞了 weight-5 英文热词（Palantir/FDE/OpenAI 等） | `--vocabulary` **只写中文专名**；英文热词反而干扰，去掉后模型自带英文能力最好 |
+| 英文专名被切碎成 P/Pal/f | `qwen-audio-3.0` 的 `--vocabulary` 里塞了 weight-5 英文热词（Palantir/FDE/OpenAI 等）；**前提是中文节目** | `--vocabulary` **只写中文专名**；英文热词反而干扰，去掉后模型自带英文能力最好 |
+| auto_vocab 出 junk token（`本期我们邀请三位嘉宾`/`🎙️【本期嘉宾】`） | 英语占比高/说话人多的节目，auto_vocab 把模板句/标记行也收进中文热词 | **英语占比高/内容多元的节目用空词汇表**（`--vocabulary` 与 `--vocabulary-file` 都留空）：中文热点词只在纯中文节目（如 E240 硅谷101）才有效，英语多的节目宁可空，勿乱加（v0.9.0 修正） |
 | 自动热词缺「雅贤/雷鸟」 | 元数据把 host 罗马化成 `Yaxian`（无「雅贤」）、产品名在营销行非结构化 | 自动热词只覆盖出品方/嘉宾+中文主持人名；罗马化 host/产品名用 `--vocabulary` 手动补 |
 
 ## 迭代记录
@@ -179,3 +180,5 @@ cp OUTDIR/bilingual.md "/d/wiki/inbox/Transcript (中英对照) - 标题 - 公�
 - v0.5.0（2026-08-26）：小宇宙交叉验证 + 方案优化。用 zlxlabs 人工校对稿当参照，对比 qwen3 vs `qwen-audio-3.0`；定案最优配置 = **`qwen-audio-3.0-asr-flash-filetrans --diarization` + 纯中文热词**（260 句带 `[spkN]`，2 位说话人）：修好 qwen3 的中文近音错（声动活泼/雅贤/FDE 间隔），又新增说话人分离，且不再回归 Palantir；英文段反而最干净。关键坑：**英文热词 weight-5 会切碎英文专名**（Palantir→P/Pal），务必只留中文专名。
 - v0.6.0（2026-08-26）：新增 `scripts/extract_xyz_meta.py`，小宇宙**元数据自举**——从节目页 `__NEXT_DATA__` 抽标题/栏目/出品方/时长/本期人物/时间轴章节，产出 `meta.json`(frontmatter+章节+说话人映射) / `auto_vocab.json`(结构性中文专名→`--vocabulary-file`) / `english_lexicon.json`(拉丁品牌→仅后校对参考)。`dashscope_asr_transcribe.py` 加 `--vocabulary-file`（与 `--vocabulary` 合并）。实证：`auto_vocab{声动活泼,申悦}` + 手动补 `{雅贤,雷鸟}` 精确复现 v0.5.0 词汇表；元数据章节时间轴 03:36 能定位到 SRT 00:03:41(Δ5s) 校验时机；列示时长 00:30:58 vs 实际音频 00:30:41。
 - v0.7.0（2026-08-27）：**shownotes 完整照搬排版**。发现 `episode.shownotes`(HTML，含 `<strong>/<a>/<img>/时间戳锚点`)才是富文源，`episode.description`(纯文本)是扁平摘要。`extract_xyz_meta.py` 新增 `_ShownotesToMD`(HTMLParser) + `html_shownotes_to_md()`（保留加粗/链接/图片/时间戳/段落换行），产出 `meta.shownotes_md` 与 `shownotes.md`；3b 富化改用 `shownotes_md`（弃 `description`）。修掉出品原生的畸形双链 `[文字]([内链](href))`→`[文字](href)`。实证：shownotes.md 2405 字，加粗标题/微信外链/图片/mailto/时间轴全部保留。
+- v0.8.0（2026-08-27）：**元数据抽取健壮化 + 3 说话人分离**。E240（硅谷101）实测发现 `extract_xyz_meta.py` 三个坑并修复：(a) 章节时间轴可为行首裸 `MM:SS 标题`（无 `[..]` 括号）→ `chapters` 正则加裸时间分支；(b) host/guest 可写成独立标题行 `【主播】`/`【嘉宾】`（名字在下一行），旧逻辑把标题行当人名（出 `host="【主播】"`）→ 识别纯标题行后读下一非空行；(c) FDE 全称可写 `Forward Deployment Engineer（FDE）`（英文在前）→ fde_expansion 正则加 `([A-Za-z ]+)（FDE）` 分支。另实证 `qwen-audio-3.0` diarization 本期分出 **3 位说话人**（spk0=104/spk1=234/spk2=120，对应 Yiwen/Jove/Oliver），比 S10E27 的 2 位更能准确映射多人；3b 富化需按实际 spk 数扩展 `spk` dict（`spk0/spk1/spk2`）。回归检查：章节 `[MM:SS]`、行内主机名（`Yaxian，…主播`）路径不受影响。
+- v0.9.0（2026-08-29）：**批量处理 + 元数据抽取深度健壮化 + 英语占比高节目用空词汇表**。一次跑通 4 则小宇宙（Vol.128/Linkloud E09/十字路口/硬地骇客 EP128，说话人 2–5 位）并修正 `extract_xyz_meta.py` 一批边界：(a) host/guest 解析全面重写为 `_parse_hosts_guests(desc)`，覆盖角色标题行（`🎙️【本期嘉宾】`/`【主播】`+下一行名字）、行内 `主播：X`/`嘉宾：X`/`Special Guest: X`、行内嵌名（`Yaxian，「科技早知道」主播`），能对杂乱版式取第一个 host/首个 guest；(b) 章节行可带 emoji 前缀（`🟢 01:08 快问快答`）→ 新增 `_lstrip_emoji`（并把 `[`、`]` 加进保留白名单，否则 `[01:08]` 的括号会被剥掉导致章节数归零）先剥装饰再匹配；(c) **Windows 控制台 GBK** 会导致 print() 打 emoji 标题/姓名时 `UnicodeEncodeError` 崩溃（文件其实早已写好）→ 脚本顶部 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，垃圾控制台行绝不会再中断整条流水线；(d) auto_vocab 过滤占位词（佚名/匿名）与超长中文短语，避免把"本期我们邀请三位嘉宾"这类模板句变成 weight-5 热词。**关键决策：英语占比高/说话人多/内容多元的节目用空词汇表**（`--vocabulary` 与 `--vocabulary-file` 都留空）——实测中文热点词只在纯中文节目（如 E240 硅谷101）里有效，英语多的节目塞进任何模板/专名热词只会制造 junk token（`本期我们邀请三位嘉宾`、`🎙️【本期嘉宾】`），而 qwen-audio-3.0 对英文本身就是原生能力，空词汇表反而最干净。（v0.5.0 的"只留中文热词"结论**前提是中文节目**，本期在英语节目上修正为"宁可空，勿乱加"。）另实证 `--diarization` 可分出 **2–5 位**说话人（spk0..spk4），主持人映射改为"其**第一句是开场白**（大家好/欢迎/我是）的那个 spk"启发式（`detect_host`），即便嘉宾先开口也能正确定位主持人；3b 富化按实际 spk 数动态生成 `主机名` + `嘉宾N` 的 `spk` dict。批量版本见 `.cc-connect/_xyz_batch/enrich_batch.py`。

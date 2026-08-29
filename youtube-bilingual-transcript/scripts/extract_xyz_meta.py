@@ -29,7 +29,16 @@ import argparse
 import json
 import os
 import re
+import sys
 from html.parser import HTMLParser
+
+# Windows console is often GBK; titles/hosts can carry emoji that GBK cannot encode and a
+# bare print() would crash the whole run right after the output files are written. Force a
+# UTF-8 stdout with replacement so a cosmetic console line can never abort the pipeline.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 # Lines that end the narrative intro and start the boilerplate/metadata block.
 SECTION_MARKERS = ("本期人物", "时间轴", "延伸阅读", "收听", "幕后制作",
@@ -60,13 +69,100 @@ def cjk_runs(s):
 def name_token(s):
     """Person-name token from a person field.
 
-    Take the substring before the first comma / CJK bracket / newline, so a
+    Take the substring before the first comma / CJK bracket / newline / separator, so a
     romanized host followed by a channel name (e.g. "Yaxian，「科技早知道」主播")
-    yields "Yaxian", not the channel name. A Chinese host ("雅贤，...") yields "雅贤".
+    yields "Yaxian"; "郑玄｜极客公园 副主编" yields "郑玄"; "Jove（钟钱杰）：Cresta…"
+    yields "Jove". A Chinese host ("雅贤，...") yields "雅贤".
     The caller decides whether the result is usable as a Chinese hotword (cjk_runs).
     """
-    head = re.split(r"[，,、「\n]", s.strip())[0]
+    head = re.split(r"[，,、「\n｜:：()（）]", s.strip())[0]
     return head.strip().rstrip("。，,.")
+
+
+def _lstrip_emoji(s):
+    """Drop a leading run of emoji/decoration (🎙️ 🎉 🚥 👦🏻 ☝️) so a section header or a
+    label line becomes a clean "【主播】" / "主播：高宁". Keeps CJK/alnum/punct (incl. []),
+    and space — so a bracket-form chapter "[01:08] …" is untouched, only the leading
+    decoration is removed."""
+    return re.sub(r"^[^一-鿿A-Za-z0-9【】\[\]:：,，、.\s]+", "", s).strip()
+
+
+def _strip_label(s):
+    """Remove a leading emoji run, a leading 【…】 header, and a "主播：/嘉宾：/Special Guest:"
+    prefix so a person line collapses to just the name."""
+    s = _lstrip_emoji(s)
+    s = re.sub(r"^【[^】]*】\s*", "", s)
+    s = re.sub(r"^(主播|主持|主持人|嘉宾|本期嘉宾|special\s*guest)\s*[:：]\s*", "", s, flags=re.I)
+    return s.strip().rstrip("。，,、.")
+
+
+def _hdr_kind(s):
+    """Classify a role section header line as 'host' / 'guest' (or None). Accepts emoji prefix
+    and bracket or bare forms: "🎙️【本期嘉宾】", "【主播】", "【嘉宾】", "主播", "嘉宾"."""
+    t = _lstrip_emoji(s)
+    if re.fullmatch(r"【[^】]*嘉宾[^】]*】|嘉宾|本期嘉宾", t):
+        return "guest"
+    if re.fullmatch(r"【[^】]*主播[^】]*】|【[^】]*主持[^】]*】|主播|主持|主持人", t):
+        return "host"
+    return None
+
+
+def _parse_hosts_guests(desc):
+    """Extract (host, guest) from an episode description across the formats observed so far:
+
+    * role section headers (with optional emoji/label prefix): "🎙️【本期嘉宾】" / "【主播】"
+      followed by one name per line until a blank / next section header / a host line / long prose;
+    * inline label + colon: "主播：高宁，Linkloud..." / "嘉宾：X，..." / "Special Guest: …";
+    * inline host embedded in a line: "Yaxian，「科技早知道」主播".
+
+    Returns the first host and first guest found (a guest may have many; only the first is kept,
+    matching the single spk1 used by the 2-speaker fallback).
+    """
+    host = guest = ""
+    lines = [ln.strip() for ln in desc.split("\n")]
+    i = 0
+    while i < len(lines):
+        s = lines[i]
+        if not s:
+            i += 1
+            continue
+        kind = _hdr_kind(s)
+        if kind:
+            # name block follows the header
+            j, names = i + 1, []
+            while j < len(lines):
+                t = lines[j]
+                if not t or _hdr_kind(t) or re.fullmatch(r"【[^】]*】", t) \
+                        or "主播" in t or "主持" in t or len(t) > 80:
+                    break
+                names.append(t)
+                j += 1
+            if kind == "host" and not host and names:
+                host = name_token(_strip_label(names[0]))
+            elif kind == "guest" and not guest and names:
+                guest = name_token(_strip_label(names[0]))
+            i = j
+            continue
+        m = re.match(r"^(?:主播|主持|主持人)\s*[:：]\s*(.+)$", _lstrip_emoji(s))
+        if m and not host:
+            host = name_token(m.group(1))
+            i += 1
+            continue
+        m = re.match(r"^(?:嘉宾|本期嘉宾)\s*[:：]\s*(.+)$", _lstrip_emoji(s))
+        if m and not guest:
+            guest = name_token(m.group(1))
+            i += 1
+            continue
+        m = re.match(r"^special\s*guest:\s*(.+)$", _lstrip_emoji(s), re.I)
+        if m and not guest:
+            guest = name_token(m.group(1))
+            i += 1
+            continue
+        if "主播" in s and not host and len(s) < 40:
+            host = name_token(_strip_label(s))
+        i += 1
+    return host, guest
+
 
 
 def format_duration(sec):
@@ -199,24 +295,18 @@ def main():
     author = podcast.get("author", "")
     duration_sec = ep.get("duration")
 
-    # --- chapters: lines like [MM:SS] title -------------------------------
+    # --- chapters: lines like [MM:SS] title, bare "MM:SS title", or with a leading
+    # emoji ("🟢 01:08 快问快答"). Strip a leading decoration so the time can anchor. ----
     chapters = []
     for line in desc.split("\n"):
-        mm = re.match(r"\s*\[(\d{1,2}:\d{2})\]\s*(.+)$", line)
+        ll = _lstrip_emoji(line.strip())
+        mm = (re.match(r"\s*\[(\d{1,2}:\d{2})\]\s*(.+)$", ll)
+              or re.match(r"^\s*(\d{1,2}:\d{2})\s+(.+)$", ll))
         if mm:
             chapters.append({"t": mm.group(1), "title": mm.group(2).strip()})
 
     # --- hosts / guests ----------------------------------------------------
-    host = guest = ""
-    for line in desc.split("\n"):
-        s = line.strip()
-        g = re.search(r"^Special Guest:\s*(.+)$", s)
-        if g and not guest:
-            guest = name_token(g.group(1))
-        if "主播" in s and not host:
-            host = name_token(s)
-        if ("嘉宾" in s or "顾问" in s or "培训讲师" in s) and not guest and "主播" not in s:
-            guest = name_token(s)
+    host, guest = _parse_hosts_guests(desc)
 
     # --- narrative body (before boilerplate) for Latin lexicon -------------
     body_lines, stop_check = [], False
@@ -241,7 +331,7 @@ def main():
             latin.add(tok)
 
     fde_exp = ""
-    mfe = re.search(r"FDE（([^（）]+)）", desc)
+    mfe = re.search(r"FDE（([^（）]+)）", desc) or re.search(r"([A-Za-z][A-Za-z ]{3,})（FDE）", desc)
     if mfe:
         fde_exp = mfe.group(1).strip()
 
@@ -265,11 +355,19 @@ def main():
     with open(os.path.join(args.out_dir, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
-    # auto_vocab: ONLY reliable Chinese proper nouns (author + non-romanized host/guest).
+    # auto_vocab: ONLY structural, reliable Chinese proper nouns. Filter out placeholder
+    # publishers, emoji/narrative fragments, and long phrases that are not a name (e.g. the
+    # intro "本期我们邀请三位嘉宾" must never become a weight-5 hotword).
+    placeholder = {"佚名", "匿名", "anonymous", "unknown"}
     vocab = {}
     for name in (author, host, guest):
-        if name and cjk_runs(name):  # romanized host "Yaxian" has no CJK -> skipped
-            vocab[name] = 5
+        name = (name or "").strip()
+        if not name or name.lower() in placeholder:
+            continue
+        runs = cjk_runs(name)
+        if not runs or len(runs[0]) > 6:   # romanized "Yaxian" -> no CJK; long phrase -> skip
+            continue
+        vocab[name] = 5
     with open(os.path.join(args.out_dir, "auto_vocab.json"), "w", encoding="utf-8") as f:
         json.dump(vocab, f, ensure_ascii=False, indent=2)
 

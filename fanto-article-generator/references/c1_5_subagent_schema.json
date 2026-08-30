@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "fanto-c1-5-persona-findings.json",
+  "title": "C1.5 四人格审校 subagent findings",
+  "description": "4 persona subagent 共用的统一 findings JSON schema。每 subagent 以独立人格审校全文后返回此结构。",
+  "type": "object",
+  "required": ["persona_id", "persona_name", "trigger_count", "findings"],
+  "properties": {
+    "persona_id": {
+      "type": "string",
+      "description": "人格编号，如 'A'、'B'、'C'、'D'",
+      "pattern": "^[A-D]$"
+    },
+    "persona_name": {
+      "type": "string",
+      "description": "人格名称，如 '投资人视角'、'工程师视角'、'媒体编辑视角'、'双语译者视角'"
+    },
+    "trigger_count": {
+      "type": "integer",
+      "description": "本人格发现的问题数（0 也必须输出）",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "description": "问题条目数组。0 触发时为 []。",
+      "items": {
+        "type": "object",
+        "required": ["finding_id", "issue_category", "issue", "modified_sentence", "confidence"],
+        "properties": {
+          "finding_id": {
+            "type": "integer",
+            "description": "本 persona 内的 finding 编号，从 1 起",
+            "minimum": 1
+          },
+          "original_sentence": {
+            "type": "string",
+            "description": "必须是待审校文章中逐字复制的精确子串（从原文复制粘贴，禁止添加位置前缀如'第3段：'，禁止用引号/方括号包裹，禁止改写压缩）。脚本用其做精确匹配自动应用修改，带前缀或改写的摘录会导致 NOT_FOUND。标题/小标题位（# 开头行）的 finding 必须整行复制"
+          },
+          "english_reference": {
+            "type": "string",
+            "description": "对应的英文原文片段（人格 D 必填，其他人格可选）"
+          },
+          "issue_category": {
+            "type": "string",
+            "description": "问题类别。各人格的类别枚举：A(数据缺少上下文/竞争定位模糊/商业逻辑跳跃/术语漂移/VC术语误用); B(技术不精确/架构逻辑断裂/Benchmark未标注/代码行为不一致/术语误用/工程语域不当); C(开篇乏力/信息密度低/判断模糊/节奏单调/动词乏力/体量感越界/转发动机弱); D(语义漂移/翻译腔句式/术语不一致/隐喻映射失败/被动冗余/长定语/盘古之白)"
+          },
+          "issue": {
+            "type": "string",
+            "description": "一句话说明问题（不超过 40 字）"
+          },
+          "modified_sentence": {
+            "type": "string",
+            "description": "建议改句。如果是删除建议，填 'DELETE'；如果是信息缺失，填 'NEEDS_CONTEXT: [缺失的信息类型]'"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "对此 finding 的确信度。high=确定有问题且有明确改法；medium=感觉有问题但改法可商榷；low=轻微违和，建议改但不改也不影响核心质量"
+          }
+        }
+      }
+    },
+    "no_finding_reason": {
+      "type": "string",
+      "description": "trigger_count=0 时简述扫描结果（如 '本文商业逻辑清晰，数据均有锚点，竞争定位具体'）"
+    },
+    "severity_summary": {
+      "type": "object",
+      "description": "按严重程度统计（可选）",
+      "properties": {
+        "hard_error": {
+          "type": "integer",
+          "description": "硬错数——不改会导致事实错误或严重误导"
+        },
+        "soft_error": {
+          "type": "integer",
+          "description": "软错数——不影响核心理解但降低阅读质量"
+        },
+        "polish": {
+          "type": "integer",
+          "description": "润色建议数——不修也不影响理解，修了更好"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+websocket-client>=1.8.0
+
+# Required for X/Twitter video → GIF conversion (extract_x_thread.py G1).
+# If not installed, MP4 files are still downloaded but GIF conversion is skipped
+# (with a warning in the manifest). Static image extraction is unaffected.
+opencv-python>=4.9.0
+Pillow>=10.0.0

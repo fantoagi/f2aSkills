@@ -9,88 +9,24 @@ Depends on: Python stdlib + websocket-client (`pip install websocket-client`).
 Chrome must be running with --remote-debugging-port=9222 --remote-allow-origins=*.
 
 Usage:
-  python render_cover.py /path/to/cover.svg [/path/to/cover.png]
+  python render_cover.py /path/to/cover.svg [/path/to/cover.png] [--keep-chrome]
 """
 
-import json, urllib.request, base64, time, os, sys, tempfile, subprocess, socket
+import argparse
+import base64
+import json
+import os
+import sys
+import tempfile
+import time
+import urllib.request
+
+from cdp_utils import ensure_cdp, stop_chrome
 
 
-def find_chrome():
-    """Find a usable Chrome/Chromium executable."""
-    candidates = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "google-chrome", "chromium", "chromium-browser",
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    # Try which
-    for name in ["google-chrome", "chromium", "chromium-browser"]:
-        try:
-            result = subprocess.run(["which", name], capture_output=True, text=True)
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except Exception:
-            pass
-    return None
-
-
-def cdp_is_running(host="[::1]", port=9222):
-    """Check if Chrome DevTools Protocol is available."""
-    try:
-        req = urllib.request.Request(f"http://{host}:{port}/json/version")
-        urllib.request.urlopen(req, timeout=3)
-        return True
-    except Exception:
-        return False
-
-
-def start_chrome(chrome_path, port=9222):
-    """Start Chrome in headless CDP mode with required flags."""
-    args = [
-        chrome_path,
-        f"--remote-debugging-port={port}",
-        "--headless",
-        "--disable-gpu",
-        "--no-sandbox",
-        "--remote-allow-origins=*",
-        "--window-size=1280,800",
-    ]
-    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # Wait for CDP to become available
-    for _ in range(15):
-        time.sleep(0.5)
-        if cdp_is_running():
-            return proc
-    proc.kill()
-    raise RuntimeError("Chrome started but CDP is not responding")
-
-
-def ensure_cdp(port=9222):
-    """Ensure CDP is running; start Chrome if needed. Returns (process_or_None, host)."""
-    # Try IPv6 first (Chrome 148+ default), then IPv4
-    for host in ["[::1]", "127.0.0.1"]:
-        if cdp_is_running(host, port):
-            return None, host
-
-    chrome = find_chrome()
-    if not chrome:
-        raise RuntimeError(
-            "Cannot find Chrome. Install Chrome or set CHROME_PATH environment variable."
-        )
-    proc = start_chrome(chrome, port)
-    # Re-detect which host it bound to
-    for host in ["[::1]", "127.0.0.1"]:
-        if cdp_is_running(host, port):
-            return proc, host
-    proc.kill()
-    raise RuntimeError("Chrome started but CDP not reachable on any host")
-
-
-def render(svg_path, png_path):
+def render(svg_path, png_path, keep_chrome=False, port=9222, width=940, height=400):
     """Render SVG to PNG via CDP browser canvas."""
+    chrome_proc = None
 
     # Read SVG
     with open(svg_path, "r", encoding="utf-8") as f:
@@ -103,15 +39,15 @@ def render(svg_path, png_path):
     html = f"""<!DOCTYPE html>
 <html><head><title>LOADING</title></head>
 <body style="margin:0;background:#fff;">
-<canvas id="c" width="940" height="400"></canvas>
+<canvas id="c" width="{width}" height="{height}"></canvas>
 <script>
 var img = new Image();
 img.onload = function() {{
   var c = document.getElementById("c");
-  c.width = 940;
-  c.height = 400;
+  c.width = {width};
+  c.height = {height};
   var ctx = c.getContext("2d");
-  ctx.drawImage(img, 0, 0, 940, 400);
+  ctx.drawImage(img, 0, 0, {width}, {height});
   document.title = "RENDERED";
 }};
 img.onerror = function() {{ document.title = "ERR"; }};
@@ -126,14 +62,15 @@ img.src = "{svg_data_uri}";
 
     try:
         # Ensure CDP
-        chrome_proc, cdp_host = ensure_cdp()
-        cdp_base = f"http://{cdp_host}:9222"
+        chrome_proc, cdp_host = ensure_cdp(port, window_size="1280,800")
+        cdp_base = f"http://{cdp_host}:{port}"
 
         # Open about:blank tab
         req = urllib.request.Request(
             f"{cdp_base}/json/new?url=about:blank", method="PUT"
         )
-        resp = json.loads(urllib.request.urlopen(req, timeout=15).read())
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = json.loads(r.read())
         tab_id = resp["id"]
         ws_url = resp["webSocketDebuggerUrl"]
 
@@ -233,7 +170,8 @@ img.src = "{svg_data_uri}";
 
         # Close tab
         ws.close()
-        urllib.request.urlopen(f"{cdp_base}/json/close/{tab_id}", timeout=5)
+        with urllib.request.urlopen(f"{cdp_base}/json/close/{tab_id}", timeout=5):
+            pass
 
         return os.path.getsize(png_path)
 
@@ -244,25 +182,51 @@ img.src = "{svg_data_uri}";
         except OSError:
             pass
 
+        # If this script started Chrome, close it unless the caller wants reuse.
+        if chrome_proc is not None and not keep_chrome:
+            stop_chrome(chrome_proc)
+
 
 def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: python {os.path.basename(__file__)} <cover.svg> [cover.png]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Render a 2.35:1 SVG cover to PNG through Chrome CDP."
+    )
+    parser.add_argument("svg_path", help="source SVG path")
+    parser.add_argument(
+        "png_path",
+        nargs="?",
+        help="output PNG path; defaults to source path with .png extension",
+    )
+    parser.add_argument("--port", type=int, default=9222, help="Chrome CDP port")
+    parser.add_argument("--width", type=int, default=940, help="output canvas width")
+    parser.add_argument("--height", type=int, default=400, help="output canvas height")
+    parser.add_argument(
+        "--keep-chrome",
+        action="store_true",
+        help="keep Chrome running if this script starts it",
+    )
+    args = parser.parse_args()
 
-    svg_path = sys.argv[1]
+    svg_path = args.svg_path
     if not os.path.exists(svg_path):
         print(f"Error: SVG file not found: {svg_path}")
         sys.exit(1)
 
-    if len(sys.argv) >= 3:
-        png_path = sys.argv[2]
+    if args.png_path:
+        png_path = args.png_path
     else:
         base = os.path.splitext(svg_path)[0]
         png_path = f"{base}.png"
 
     try:
-        size = render(svg_path, png_path)
+        size = render(
+            svg_path,
+            png_path,
+            keep_chrome=args.keep_chrome,
+            port=args.port,
+            width=args.width,
+            height=args.height,
+        )
         print(f"Cover rendered: {png_path} ({size:,} bytes)")
     except Exception as e:
         print(f"Render failed: {e}")
